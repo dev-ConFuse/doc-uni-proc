@@ -33,8 +33,8 @@ static CONFIG: OnceCell<Config> = OnceCell::const_new();
 pub async fn init_processor() -> Result<Arc<UnifiedProcessor>, Box<dyn std::error::Error + Send + Sync>> {
     PROCESSOR.get_or_try_init(|| async {
         // Load environment variables
-        dotenvy::from_filename_override(".env.map").ok();
-        dotenvy::from_filename_override(".env.secret").ok();
+        dotenvy::from_filename_override(".map.env").ok();
+        dotenvy::from_filename_override(".secret.env").ok();
         dotenvy::from_filename_override(".env.local").ok();
         dotenvy::dotenv().ok();
 
