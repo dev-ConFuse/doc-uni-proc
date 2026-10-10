@@ -270,7 +270,7 @@ impl Default for Config {
                 workers: 4,
                 grpc_host: "0.0.0.0".to_string(),
                 grpc_port: 50052,
-                auth_middleware_url: std::env::var("AUTH_MIDDLEWARE_URL").unwrap_or_else(|_| "http://auth-middleware:8080".to_string()),
+                auth_middleware_url: std::env::var("AUTH_MIDDLEWARE_URL").unwrap_or_else(|_| "http://auth-middleware:3010".to_string()),
                 auth_grpc_url: "".to_string(),
             },
             database: DatabaseConfig {
