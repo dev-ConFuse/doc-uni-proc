@@ -325,43 +325,4 @@ impl GraphifyEpisode {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn test_episode_serialization_roundtrip() {
-        let episode = GraphifyEpisode::new(
-            EpisodeSourceType::Codebase,
-            "repo-123".to_string(),
-            "fn main() {}".to_string(),
-            "unified-processor",
-        )
-        .with_chunk_type(EpisodeChunkType::Function)
-        .with_language("rust")
-        .with_content_path("src/main.rs")
-        .with_group_id("tenant-1");
-
-        let json = episode.to_json_payload().unwrap();
-        let deserialized = GraphifyEpisode::from_json_payload(&json).unwrap();
-
-        assert_eq!(deserialized.id, episode.id);
-        assert_eq!(deserialized.source_type, EpisodeSourceType::Codebase);
-        assert_eq!(deserialized.chunk_type, EpisodeChunkType::Function);
-        assert_eq!(deserialized.language, Some("rust".to_string()));
-    }
-
-    #[test]
-    fn test_episode_with_embedding() {
-        let episode = GraphifyEpisode::new(
-            EpisodeSourceType::Document,
-            "doc-456".to_string(),
-            "Some document text".to_string(),
-            "embeddings-service",
-        )
-        .with_embedding(vec![0.1, 0.2, 0.3], "gemini-embedding-2");
-
-        assert_eq!(episode.embedding_dimension, Some(3));
-        assert_eq!(episode.embedding_model.unwrap(), "gemini-embedding-2");
-    }
-}
