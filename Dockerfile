@@ -2,7 +2,7 @@
 # Unified Processor Service - Dockerfile
 # ==============================================================================
 # Multi-stage build for Rust service
-# Port: 8080 (Vercel standard)
+# Port supplied at runtime via .map.env / .secret.env
 # ==============================================================================
 
 # ==============================================================================

@@ -1637,8 +1637,7 @@ pub async fn create_falkordb_storage(
 ) -> Result<Arc<FalkordbStorage>> {
     // Construct standard redis:// or rediss:// connection URL
     // We forcibly use `redis` (plaintext) because the FalkorDB cloud instance on port 50860
-    // does not use TLS, but Render's dashboard might still have FALKORDB_USE_TLS=true,
-    // which would cause a TLS handshake timeout.
+    // does not use TLS; a stale FALKORDB_USE_TLS=true would cause a TLS handshake timeout.
     let scheme = "redis";
     let auth = if username.is_empty() && password.is_empty() {
         "".to_string()
@@ -1658,34 +1657,33 @@ pub async fn create_falkordb_storage(
     let manager = RedisConnectionManager::new(url)
         .context("Failed to configure redis connection")?;
 
-    // Build the pool with increased timeout and size for Render free tier
-    // Free instances spin down after inactivity (50+ second delays), so we need:
-    // 1. Larger pool to handle concurrent requests during spin-up
-    // 2. Longer timeout to accommodate free tier spin-up delays
+    // Build the pool sized for concurrent ingestion bursts:
+    // 1. Larger pool to handle concurrent requests
+    // 2. Generous connection timeout
     // 3. Lazy connections — bb8 does NOT connect at build time
-    let max_conns = std::env::var("FALKORDB_MAX_CONNECTIONS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(5);
+    let max_conns: u32 = std::env::var("FALKORDB_MAX_CONNECTIONS")
+        .expect("Missing required environment variable: FALKORDB_MAX_CONNECTIONS")
+        .parse()
+        .expect("Invalid value for environment variable: FALKORDB_MAX_CONNECTIONS");
 
     let pool = Pool::builder()
         .max_size(max_conns)
-        .connection_timeout(std::time::Duration::from_secs(30)) // Increased from 8s to handle free tier spin-up
+        .connection_timeout(std::time::Duration::from_secs(30))
         .build(manager)
         .await
         .context("Failed to build FalkorDB connection pool")?;
 
     let pool = Arc::new(pool);
 
-    // Smoke-test: one connection attempt with a hard 60 s total cap to handle free tier spin-up.
+    // Smoke-test: one connection attempt with a hard 60 s total cap.
     // Logs a warning but does NOT abort startup if the test fails.
     match tokio::time::timeout(
-        std::time::Duration::from_secs(60), // Increased from 10s to handle free tier spin-up
+        std::time::Duration::from_secs(60),
         pool.get(),
     ).await {
         Ok(Ok(mut conn)) => {
             match tokio::time::timeout(
-                std::time::Duration::from_secs(15), // Increased from 5s
+                std::time::Duration::from_secs(15),
                 redis::cmd("PING").query_async::<_, String>(&mut *conn),
             ).await {
                 Ok(Ok(pong)) => {

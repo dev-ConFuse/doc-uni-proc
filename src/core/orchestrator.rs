@@ -420,7 +420,7 @@ impl UnifiedProcessor {
     }
 
     async fn process_document(&self, content: &str, is_base64: bool, filename: &str, source_id: &str) -> (ProcessingResult, Vec<crate::core::chunking::Chunk>) {
-        // Enforce document size limits for serverless / Vercel container execution
+        // Enforce document size limits for container execution
         let max_size_mb: usize = std::env::var("MAX_DOCUMENT_SIZE_MB")
             .ok()
             .and_then(|s| s.parse().ok())

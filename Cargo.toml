@@ -10,35 +10,11 @@ authors = ["ConFuse Team"]
 name = "unified_processor_lib"
 path = "src/lib.rs"
 
-# Function binaries
-[[bin]]
-name = "index"
-path = "api/index.rs"
-
-[[bin]]
-name = "process"
-path = "api/process.rs"
-
-[[bin]]
-name = "batch"
-path = "api/batch.rs"
-
-[[bin]]
-name = "sync"
-path = "api/sync.rs"
-
-[[bin]]
-name = "status"
-path = "api/status.rs"
-
-[[bin]]
-name = "local"
-path = "api/local.rs"
+# Main server binary: src/main.rs (auto-discovered as `doc-uni-proc`).
+# Former serverless function entrypoints were removed — Dockerfile is the
+# only deployment target.
 
 [dependencies]
-# Vercel Runtime
-vercel_runtime = "1.1"
-
 # Extracted from confuse-common
 jsonwebtoken = "10.4.0"
 validator = { version = "0.20.0", features = ["derive"] }
