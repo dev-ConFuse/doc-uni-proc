@@ -15,9 +15,9 @@ async fn main() {
         .init();
 
     let port = env::var("PORT")
-        .unwrap_or_else(|_| "8080".to_string())
+        .expect("Missing required environment variable: PORT")
         .parse::<u16>()
-        .unwrap_or(8080);
+        .expect("Invalid value for environment variable: PORT");
 
     let addr = format!("0.0.0.0:{}", port);
     

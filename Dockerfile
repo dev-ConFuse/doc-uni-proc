@@ -103,8 +103,7 @@ RUN chown -R appuser:appgroup /app
 # SECURITY: Switch to the non-root user
 USER appuser
 
-# ⚠️ CRITICAL: Vercel requires port 8080
-ENV PORT=8080
+# ⚠️ PORT is supplied at runtime (.map.env / platform env) — see .cline/rules/env-policy.md
 EXPOSE 8080
 
 ENTRYPOINT ["dumb-init", "--"]

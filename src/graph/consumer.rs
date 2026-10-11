@@ -174,7 +174,7 @@ impl UnifiedEventConsumer {
     /// Start the background event consumer loop with retry on Kafka disconnection
     pub async fn start(&self) -> anyhow::Result<()> {
         let bootstrap_servers = std::env::var("KAFKA_BOOTSTRAP_SERVERS")
-            .unwrap_or_else(|_| "127.0.0.1:9092".to_string());
+            .expect("Missing required environment variable: KAFKA_BOOTSTRAP_SERVERS");
 
         let processor = self.processor.clone();
 
@@ -196,18 +196,19 @@ impl UnifiedEventConsumer {
 
     async fn start_consumer(&self, bootstrap_servers: &str, processor: Arc<UnifiedProcessor>) -> anyhow::Result<()> {
         let group_id = std::env::var("DOC_UNI_PROC_KAFKA_GROUP_ID")
-            .unwrap_or_else(|_| "doc-uni-proc-group".to_string());
+            .expect("Missing required environment variable: DOC_UNI_PROC_KAFKA_GROUP_ID");
         let consumer = EventConsumer::new(bootstrap_servers, &group_id)
             .map_err(|e| anyhow::anyhow!("Failed to create Kafka consumer: {}", e))?;
 
 
 
+        let embedding_generated_topic = Topics::embedding_generated();
         consumer.subscribe(&[
-            Topics::EMBEDDING_GENERATED,
+            embedding_generated_topic.as_str(),
         ]).await?;
 
         info!("Unified event consumer started on topics: {}",
-            Topics::EMBEDDING_GENERATED);
+            embedding_generated_topic);
 
         // Use the consume method from EventConsumer which handles the loop and spawning
         // We use boxed_handler helper to ensure the closure returns a BoxFuture as required
@@ -454,9 +455,12 @@ impl UnifiedEventConsumer {
                         "top_k": 10
                     });
                     
-                    let fetcher_url = "http://127.0.0.1:8000/ingest";
+                    // fast-fetcher endpoint is env config (no hard-coded URL)
+                    let fetcher_url = std::env::var("FAST_FETCHER_URL")
+                        .expect("Missing required environment variable: FAST_FETCHER_URL");
+                    let fetcher_url = format!("{}/ingest", fetcher_url.trim_end_matches('/'));
                     let client = reqwest::Client::new();
-                    match client.post(fetcher_url).json(&req_body).send().await {
+                    match client.post(&fetcher_url).json(&req_body).send().await {
                         Ok(res) => {
                             if let Ok(json) = res.json::<serde_json::Value>().await {
                                 if let Some(edges) = json.get("discovered_edges").and_then(|v| v.as_array()) {

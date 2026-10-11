@@ -41,27 +41,29 @@ pub struct NimOcrConfig {
 impl NimOcrConfig {
     /// Build config from environment variables. Returns `None` when the
     /// feature is not configured (i.e. `NVIDIA_NIM_ENDPOINT` is unset).
+    /// When enabled, all companion vars are required (no in-code defaults —
+    /// see `.cline/rules/env-policy.md`).
     pub fn from_env() -> Option<Self> {
         let endpoint = std::env::var("NVIDIA_NIM_ENDPOINT").ok()?;
         let endpoint = endpoint.trim_end_matches('/').to_string();
 
+        fn required(name: &str) -> String {
+            std::env::var(name)
+                .unwrap_or_else(|_| panic!("Missing required environment variable: {name}"))
+        }
+        fn required_parse<T: std::str::FromStr>(name: &str) -> T {
+            required(name)
+                .parse()
+                .unwrap_or_else(|_| panic!("Invalid value for environment variable: {name}"))
+        }
+
         Some(Self {
             endpoint,
             api_key: std::env::var("NVIDIA_NIM_API_KEY").ok(),
-            model: std::env::var("NVIDIA_NIM_MODEL")
-                .unwrap_or_else(|_| "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning".to_string()),
-            batch_size: std::env::var("NIM_BATCH_SIZE")
-                .unwrap_or_else(|_| "4".to_string())
-                .parse()
-                .unwrap_or(4),
-            timeout_secs: std::env::var("NIM_TIMEOUT_SECS")
-                .unwrap_or_else(|_| "120".to_string())
-                .parse()
-                .unwrap_or(120),
-            max_tokens: std::env::var("NIM_MAX_TOKENS")
-                .unwrap_or_else(|_| "4096".to_string())
-                .parse()
-                .unwrap_or(4096),
+            model: required("NVIDIA_NIM_MODEL"),
+            batch_size: required_parse("NIM_BATCH_SIZE"),
+            timeout_secs: required_parse("NIM_TIMEOUT_SECS"),
+            max_tokens: required_parse("NIM_MAX_TOKENS"),
         })
     }
 }

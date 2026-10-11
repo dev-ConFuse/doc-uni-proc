@@ -38,11 +38,13 @@ pub async fn init_processor() -> Result<Arc<UnifiedProcessor>, Box<dyn std::erro
         dotenvy::from_filename_override(".env.local").ok();
         dotenvy::dotenv().ok();
 
-        // Load config
-        let config = Config::from_env().unwrap_or_else(|e| {
-            tracing::warn!("Config error, falling back to defaults: {}", e);
-            Config::default()
-        });
+        // Load config — fail fast when required env vars are missing
+        // (values live in .map.env / .secret.env; no in-code defaults).
+        let config = Config::from_env().map_err(|e| {
+            Box::<dyn std::error::Error + Send + Sync>::from(format!(
+                "Missing or invalid required environment configuration (see .map.env / .secret.env): {e}"
+            ))
+        })?;
         CONFIG.set(config.clone()).ok();
 
         // Initialize FalkorDB storage
