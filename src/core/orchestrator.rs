@@ -422,9 +422,9 @@ impl UnifiedProcessor {
     async fn process_document(&self, content: &str, is_base64: bool, filename: &str, source_id: &str) -> (ProcessingResult, Vec<crate::core::chunking::Chunk>) {
         // Enforce document size limits for container execution
         let max_size_mb: usize = std::env::var("MAX_DOCUMENT_SIZE_MB")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(50);
+            .expect("Missing required environment variable: MAX_DOCUMENT_SIZE_MB")
+            .parse()
+            .expect("Invalid value for environment variable: MAX_DOCUMENT_SIZE_MB");
         if content.len() > max_size_mb * 1024 * 1024 {
             return (ProcessingResult {
                 success: false,

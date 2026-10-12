@@ -85,7 +85,7 @@ impl UnifiedProcessor {
 
         // â”€â”€ Path-traversal guard (cross-platform) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         let base_env = std::env::var("DOWNLOADS_BASE_PATH")
-            .unwrap_or_else(|_| std::env::temp_dir().join("confuse-downloads").to_string_lossy().to_string());
+            .expect("Missing required environment variable: DOWNLOADS_BASE_PATH");
         let base_path = std::path::PathBuf::from(&base_env);
         
         tracing::info!(
