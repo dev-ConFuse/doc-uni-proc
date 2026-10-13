@@ -33,11 +33,11 @@ pub mod security {
 
     impl SecurityScanner {
         fn aws_regex() -> &'static Regex {
-            AWS_KEY_REGEX.get_or_init(|| Regex::new(r"(?i)AKIA[0-9A-Z]{16}").unwrap())
+            AWS_KEY_REGEX.get_or_init(|| Regex::new(r"(?i)AKIA[0-9A-Z]{16}").expect("static regex compiles"))
         }
 
         fn private_key_regex() -> &'static Regex {
-            PRIVATE_KEY_REGEX.get_or_init(|| Regex::new(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----").unwrap())
+            PRIVATE_KEY_REGEX.get_or_init(|| Regex::new(r"-----BEGIN [A-Z ]+ PRIVATE KEY-----").expect("static regex compiles"))
         }
 
         /// Scan a chunk's content for potential secrets and append metadata if found.

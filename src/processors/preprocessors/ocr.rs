@@ -6,9 +6,7 @@
 //! `/v1/chat/completions` endpoint with a structured extraction prompt,
 //! and parses the model's Markdown response back into `PipelineOutput`.
 //!
-//! # Supported NIMs
-//! Any OpenAI-compatible vision model: `meta/llama-3.2-11b-vision-instruct`,
-//! `mistralai/pixtral-12b-2409`, `nvidia/neva-22b`, etc.
+//! The model identifier is configured with `NVIDIA_NIM_MODEL`.
 
 use crate::core::Result;
 use crate::processors::parser::{PipelineOutput, PipelineSection, PipelineTable};
@@ -28,7 +26,7 @@ pub struct NimOcrConfig {
     pub endpoint: String,
     /// API key / bearer token (required for cloud catalog, optional self-hosted).
     pub api_key: Option<String>,
-    /// Model identifier, e.g. `meta/llama-3.2-11b-vision-instruct`.
+    /// Model identifier configured for the NIM endpoint.
     pub model: String,
     /// Maximum concurrent page-batch requests.
     pub batch_size: usize,

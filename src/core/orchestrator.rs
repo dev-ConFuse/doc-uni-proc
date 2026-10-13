@@ -487,7 +487,7 @@ impl UnifiedProcessor {
             );
         }
 
-        let result = match self.document_parser.process_document_file_with_options(file_path.to_str().unwrap(), deployed_testing_enabled).await {
+        let result = match self.document_parser.process_document_file_with_options(file_path.to_str().expect("infallible invariant reviewed 2026-10-13"), deployed_testing_enabled).await {
             Ok(document_data) => {
                 let chunks = crate::processors::parser::build_document_chunks(&document_data, filename, source_id);
                 (ProcessingResult {
