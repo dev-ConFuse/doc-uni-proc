@@ -39,13 +39,12 @@ COPY Cargo.toml Cargo.lock* ./
 # Build a minimal stub that mirrors the actual lib.rs module layout so cargo
 # can compile all crate dependencies without the real source files.
 RUN mkdir -p \
-        api \
         src/core \
         src/processors \
         src/infra \
         src/graph \
         src/utils && \
-    echo 'fn main() {}' > api/index.rs && \
+    echo 'fn main() {}' > src/main.rs && \
     printf 'pub mod core;\npub mod processors;\npub mod infra;\npub mod graph;\n' > src/lib.rs && \
     touch \
         src/core/mod.rs \
@@ -62,12 +61,11 @@ RUN cargo build --release 2>/dev/null; \
 # ---------------------------------------------------------------------------
 # Real build
 # ---------------------------------------------------------------------------
-RUN rm -rf src/* api/*
+RUN rm -rf src/*
 COPY src/ ./src/
-COPY api/ ./api/
 
 # Force Cargo to invalidate the cache by updating timestamps
-RUN touch src/lib.rs api/index.rs && cargo build --release
+RUN touch src/lib.rs src/main.rs && cargo build --release
 
 # ==============================================================================
 # Stage 2: Runtime image
@@ -95,7 +93,8 @@ RUN groupadd -r appgroup && useradd -r -g appgroup appuser
 WORKDIR /app
 
 # Copy the compiled Rust binary and set ownership
-COPY --from=rust-builder --chown=appuser:appgroup /app/target/release/index /usr/local/bin/doc-uni-proc
+# (binary name = auto-discovered src/main.rs → package name)
+COPY --from=rust-builder --chown=appuser:appgroup /app/target/release/doc-uni-proc /usr/local/bin/doc-uni-proc
 
 # Ensure the appuser owns the working directory
 RUN chown -R appuser:appgroup /app
