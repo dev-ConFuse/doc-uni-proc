@@ -2,18 +2,17 @@ use std::net::SocketAddr;
 
 use tokio::net::TcpListener;
 use tracing::{error, info};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Load env first so LOG_LEVEL / LOG_FORMAT drive tracing
+    // (env policy: .map.env → .secret.env → .env.local).
+    dotenvy::from_filename_override(".map.env").ok();
+    dotenvy::from_filename_override(".secret.env").ok();
+    dotenvy::from_filename_override(".env.local").ok();
+
+    // Initialize structured tracing (correlation + access logs in middleware)
+    unified_processor_lib::graph::correlation::init_tracing();
 
     // ── Config + processor ──────────────────────────────────────────────────
     // init_processor loads .map.env → .secret.env → .env.local and fails fast
