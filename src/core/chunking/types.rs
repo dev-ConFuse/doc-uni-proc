@@ -40,10 +40,33 @@ pub struct SizeConfig {
 impl Default for SizeConfig {
     fn default() -> Self {
         Self {
-            max_chunk_size: 1500,
-            min_chunk_size: 100,
-            overlap_size: 200,
-            target_size: 1024,
+            // Tuned for retrieval precision rather than raw throughput: a chunk
+            // should carry roughly one idea so its embedding stays focused and a
+            // narrow query can match it. ~500 chars is ~125 tokens — small enough
+            // to rank precisely, large enough to stand alone alongside the overlap.
+            max_chunk_size: 800,
+            min_chunk_size: 150,
+            overlap_size: 100,
+            target_size: 500,
+        }
+    }
+}
+
+impl SizeConfig {
+    /// Override from environment so chunk sizing is tunable without a rebuild.
+    fn from_env() -> Self {
+        let d = Self::default();
+        let read = |key: &str, fallback: usize| -> usize {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(fallback)
+        };
+        Self {
+            max_chunk_size: read("CHUNK_MAX_SIZE", d.max_chunk_size),
+            min_chunk_size: read("CHUNK_MIN_SIZE", d.min_chunk_size),
+            overlap_size: read("CHUNK_OVERLAP_SIZE", d.overlap_size),
+            target_size: read("CHUNK_TARGET_SIZE", d.target_size),
         }
     }
 }
@@ -150,13 +173,24 @@ impl Default for PerformanceConfig {
 impl ChunkingConfig {
     /// Load from environment variables
     pub fn from_env() -> Self {
-        let config = Self::default();
-        
+        let mut config = Self::default();
+
+        // Chunk sizing is tunable per deployment (CHUNK_TARGET_SIZE,
+        // CHUNK_MAX_SIZE, CHUNK_MIN_SIZE, CHUNK_OVERLAP_SIZE).
+        config.size = SizeConfig::from_env();
+        info!(
+            "Chunk sizing: target={} max={} min={} overlap={}",
+            config.size.target_size,
+            config.size.max_chunk_size,
+            config.size.min_chunk_size,
+            config.size.overlap_size
+        );
+
         // Load Agents Config
         // Agents are REQUIRED in fail-fast mode
         info!("Loading agent configuration (fail-fast mode)");
 
-        
+
         config
     }
     

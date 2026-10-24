@@ -165,8 +165,32 @@ impl DocumentParser {
     }
 }
 
-const MAX_SECTION_CHUNK_CHARS: usize = 3000;
-const MAX_FULL_DOC_CHARS: usize = 100_000;
+/// Maximum characters of body text per document chunk.
+///
+/// Tuned for retrieval precision rather than throughput: a chunk should carry
+/// roughly one idea so its embedding stays focused and a narrow query can match
+/// it at high similarity. The previous 3000-char setting packed ~750 tokens
+/// into one node, which blurs the embedding and makes a chunk match many
+/// different queries only moderately well. Overridable via DOC_CHUNK_MAX_CHARS.
+fn max_section_chunk_chars() -> usize {
+    std::env::var("DOC_CHUNK_MAX_CHARS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(600)
+}
+
+/// Cap for the whole-document fallback node.
+///
+/// This node re-embeds document body text, so a generous limit recreated the
+/// entire document as one giant Vector_Chunk. That blob matched almost any
+/// query at medium similarity and crowded the precise section chunks out of the
+/// top-k results. Overridable via DOC_OVERVIEW_MAX_CHARS.
+fn max_full_doc_chars() -> usize {
+    std::env::var("DOC_OVERVIEW_MAX_CHARS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(1500)
+}
 
 pub fn build_document_chunks(
     parsed: &PipelineOutput,
@@ -223,7 +247,7 @@ pub fn build_document_chunks(
         }
 
         // If the section is small enough, keep it as one chunk
-        if section.content.len() <= MAX_SECTION_CHUNK_CHARS {
+        if section.content.len() <= max_section_chunk_chars() {
             let content = format!("{}{}", section_header, section.content);
             let chunk = Chunk::new(
                 source_id.to_string(),
@@ -297,7 +321,7 @@ pub fn build_document_chunks(
                 results
             }
 
-            let text_chunks = chunk_text(&section.content, MAX_SECTION_CHUNK_CHARS);
+            let text_chunks = chunk_text(&section.content, max_section_chunk_chars());
             
             for (i, t_chunk) in text_chunks.iter().enumerate() {
                 let final_text = if i == 0 {
@@ -355,7 +379,7 @@ pub fn build_document_chunks(
 
     // 4. Full-document chunk (store as large-context fallback)
     // Build a large contiguous representation of the document to provide
-    // richer retrieval context. Truncate to MAX_FULL_DOC_CHARS to avoid
+    // richer retrieval context. Truncate to `max_full_doc_chars()` to avoid
     // creating excessively large nodes.
     let mut full_text = String::new();
     for section in &parsed.sections {
@@ -380,9 +404,17 @@ pub fn build_document_chunks(
     }
 
     if !full_text.trim().is_empty() {
-        let truncated = if full_text.len() > MAX_FULL_DOC_CHARS {
-            // Attempt to truncate at a paragraph boundary near the limit
-            let mut t = full_text[..MAX_FULL_DOC_CHARS].to_string();
+        let limit = max_full_doc_chars();
+        let truncated = if full_text.len() > limit {
+            // Truncate at a paragraph boundary near the limit. Slicing with
+            // `full_text[..limit]` panics when the limit lands mid-UTF-8
+            // character (this document contains multi-byte bullets), so back up
+            // to a valid char boundary first.
+            let mut end = limit;
+            while end > 0 && !full_text.is_char_boundary(end) {
+                end -= 1;
+            }
+            let mut t = full_text[..end].to_string();
             if let Some(idx) = t.rfind("\n\n") {
                 t.truncate(idx);
             }

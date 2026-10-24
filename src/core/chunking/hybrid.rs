@@ -85,7 +85,9 @@ impl HybridChunker {
             }
         }
         
-        self.chunk_text(content, max_chars, overlap_chars)
+        // Pack to the soft target so chunks stay small and retrieval-focused;
+        // the hard maximum is only used to break up oversized atomic units.
+        self.chunk_text(content, config.size.target_size, max_chars, overlap_chars)
     }
 
     fn chunk_json(&self, val: &serde_json::Value, max_chars: usize, _overlap_chars: usize) -> Vec<String> {
@@ -137,19 +139,24 @@ impl HybridChunker {
         }
     }
     
-    fn chunk_text(&self, content: &str, max_chars: usize, overlap_chars: usize) -> Vec<String> {
+    fn chunk_text(&self, content: &str, pack_chars: usize, max_chars: usize, overlap_chars: usize) -> Vec<String> {
         let mut chunks = Vec::new();
         let mut current_chunk = String::new();
 
-        let paragraphs: Vec<&str> = content.split("\n\n").collect();
-        
+        // Split on line boundaries rather than blank lines. Extracted document
+        // text (PDF, HTML) rarely contains blank lines, so splitting on "\n\n"
+        // collapses a whole document into one oversized "paragraph" that is then
+        // hard-cut at max_chars — producing few, oversized, multi-topic chunks.
+        // Lines keep table rows, list items and code lines intact.
+        let paragraphs: Vec<&str> = content.split('\n').collect();
+
         for paragraph in paragraphs {
             let p = paragraph.trim();
             if p.is_empty() {
                 continue;
             }
 
-            // Fallback to sentences if the paragraph is incredibly long
+            // Fallback to sentences if the line is incredibly long
             let pieces = if p.len() > max_chars {
                 p.split(". ").collect::<Vec<_>>()
             } else {
@@ -161,10 +168,10 @@ impl HybridChunker {
                 if pieces.len() > 1 && i < pieces.len() - 1 {
                     text.push_str(". ");
                 } else if pieces.len() == 1 {
-                    text.push_str("\n\n");
+                    text.push('\n');
                 }
 
-                if current_chunk.len() + text.len() > max_chars && !current_chunk.is_empty() {
+                if current_chunk.len() + text.len() > pack_chars && !current_chunk.is_empty() {
                     chunks.push(current_chunk.trim().to_string());
                     
                     // Add overlap
@@ -196,7 +203,7 @@ impl HybridChunker {
                                 chunks.push(block);
                             }
                         } else {
-                            if current_chunk.len() + word.len() + 1 > max_chars && !current_chunk.is_empty() {
+                            if current_chunk.len() + word.len() + 1 > pack_chars && !current_chunk.is_empty() {
                                 chunks.push(current_chunk.trim().to_string());
                                 // Add overlap
                                 let mut overlap_text = String::new();
