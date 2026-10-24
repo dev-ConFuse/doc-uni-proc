@@ -65,6 +65,8 @@ dotenvy = "0.15.7"
 
 # PDF Extraction
 pdf-extract = "0.10.0"
+# OOXML packages (.docx/.pptx/.xlsx) are ZIP archives of XML parts
+zip = "2"
 
 # Utils
 num_cpus = "1.17.0"

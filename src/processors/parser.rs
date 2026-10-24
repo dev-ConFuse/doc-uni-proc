@@ -88,20 +88,11 @@ impl DocumentParser {
         }
         
         // Priority 2: Native Rust extraction (Fast & zero-overhead fallback)
-        let content = if extension == "pdf" {
-            let path = file_path.to_string();
-            tokio::task::spawn_blocking(move || {
-                match pdf_extract::extract_text(&path) {
-                    Ok(text) => text,
-                    Err(e) => {
-                        tracing::warn!("Failed to extract PDF text from {}: {}", path, e);
-                        "Binary or unreadable file".to_string()
-                    }
-                }
-            }).await.unwrap_or_else(|_| "Binary or unreadable file".to_string())
-        } else {
-            tokio::fs::read_to_string(file_path).await.unwrap_or_else(|_| "Binary or unreadable file".to_string())
-        };
+        let path = file_path.to_string();
+        let ext = extension.clone();
+        let content = tokio::task::spawn_blocking(move || extract_document_text(&path, &ext))
+            .await
+            .unwrap_or_default();
 
         let title = std::path::Path::new(file_path).file_stem().and_then(|s| s.to_str()).unwrap_or("Document").to_string();
 
@@ -164,6 +155,160 @@ impl DocumentParser {
         }
     }
 }
+
+/// Decode arbitrary text bytes, honouring BOMs and tolerating non-UTF-8.
+///
+/// `read_to_string` only accepts UTF-8, so a `.txt` saved as UTF-16 or CP1252
+/// used to fail outright and get replaced by a placeholder string. Latin-1 is
+/// the final fallback because it maps every byte to a char and never fails.
+fn decode_text_bytes(bytes: &[u8]) -> String {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(&bytes[3..]).into_owned();
+    }
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return decode_utf16(&bytes[2..], true);
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        return decode_utf16(&bytes[2..], false);
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => bytes.iter().map(|&b| b as char).collect(),
+    }
+}
+
+fn decode_utf16(bytes: &[u8], little_endian: bool) -> String {
+    let units: Vec<u16> = bytes
+        .chunks_exact(2)
+        .map(|c| {
+            if little_endian {
+                u16::from_le_bytes([c[0], c[1]])
+            } else {
+                u16::from_be_bytes([c[0], c[1]])
+            }
+        })
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// Flatten OOXML markup into readable text, keeping paragraph structure.
+fn strip_ooxml(xml: &str) -> String {
+    let mut out = String::with_capacity(xml.len() / 4);
+    let mut chars = xml.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '<' {
+            out.push(c);
+            continue;
+        }
+        let mut tag = String::new();
+        for c in chars.by_ref() {
+            if c == '>' {
+                break;
+            }
+            tag.push(c);
+        }
+        let closing = tag.starts_with('/');
+        let name = tag.trim_start_matches('/').trim();
+        // End of a paragraph / text run = a line break in the extracted text.
+        if closing
+            && (name.starts_with("w:p")
+                || name.starts_with("a:p")
+                || name == "si"
+                || name == "text"
+                || name == "t")
+        {
+            out.push('\n');
+        }
+    }
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+/// Pull readable text out of an OOXML/ZIP package (.docx, .pptx, .xlsx, .epub).
+fn extract_ooxml_text(bytes: &[u8]) -> Option<String> {
+    use std::io::Read;
+
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
+
+    // Most useful part first; anything else XML is a fallback.
+    let mut names: Vec<String> = Vec::new();
+    for i in 0..archive.len() {
+        if let Ok(entry) = archive.by_index(i) {
+            let n = entry.name().to_string();
+            if n == "word/document.xml" {
+                names.insert(0, n);
+            } else if n.ends_with(".xml") {
+                names.push(n);
+            }
+        }
+    }
+
+    for name in names {
+        let Ok(mut entry) = archive.by_name(&name) else {
+            continue;
+        };
+        let mut xml = String::new();
+        if entry.read_to_string(&mut xml).is_err() {
+            continue;
+        }
+        let text = strip_ooxml(&xml);
+        if text.trim().len() > 20 {
+            return Some(text);
+        }
+    }
+    None
+}
+
+/// Extract text from a document of any supported type.
+///
+/// Returns an empty string when extraction fails. It deliberately never returns
+/// a placeholder sentence: that placeholder used to be chunked and indexed as if
+/// it were the document's own content.
+fn extract_document_text(file_path: &str, extension: &str) -> String {
+    match extension {
+        "pdf" => match pdf_extract::extract_text(file_path) {
+            Ok(text) => text,
+            Err(e) => {
+                tracing::warn!("Failed to extract PDF text from {}: {}", file_path, e);
+                String::new()
+            }
+        },
+        "docx" | "pptx" | "xlsx" | "odt" | "odp" | "ods" | "epub" => {
+            let bytes = match std::fs::read(file_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("Failed to read {}: {}", file_path, e);
+                    return String::new();
+                }
+            };
+            match extract_ooxml_text(&bytes) {
+                Some(text) => text,
+                None => {
+                    tracing::warn!(
+                        "No extractable text part found in {} ({})",
+                        file_path,
+                        extension
+                    );
+                    String::new()
+                }
+            }
+        }
+        _ => {
+            let bytes = match std::fs::read(file_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::warn!("Failed to read {}: {}", file_path, e);
+                    return String::new();
+                }
+            };
+            decode_text_bytes(&bytes)
+        }
+    }
+}
+
 
 /// Maximum characters of body text per document chunk.
 ///
