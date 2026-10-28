@@ -26,9 +26,11 @@ impl EventConsumer {
             .set("enable.auto.commit", "true")
             .set("auto.offset.reset", "earliest")
             .set("enable.auto.offset.store", "true")
-            // Session / heartbeat — keep well inside max.poll.interval
-            .set("session.timeout.ms", "30000")
-            .set("heartbeat.interval.ms", "10000")
+            // Session / heartbeat — keep well inside max.poll.interval.
+            // Generous values: on a constrained link heartbeats can be delayed, and a tight
+            // timeout evicts the consumer and forces a needless rebalance.
+            .set("session.timeout.ms", "45000")
+            .set("heartbeat.interval.ms", "15000")
             // 30-minute poll interval: process_file() on large repos can take several minutes;
             // the old 300 s was too tight and caused PollExceeded errors.
             .set("max.poll.interval.ms", "1800000")
@@ -37,7 +39,16 @@ impl EventConsumer {
             // Keep the TCP connection alive so Aiven doesn't drop idle connections
             // (fixes BrokerTransportFailure after long idle periods)
             .set("socket.keepalive.enable", "true")
-            .set("socket.timeout.ms", "60000")
+            .set("socket.timeout.ms", "120000")
+            // TCP+TLS setup budget. Explicit rather than relying on the library default,
+            // and allowed to grow on retry so a slow first handshake still succeeds.
+            .set("socket.connection.setup.timeout.ms", "120000")
+            .set("socket.connection.setup.timeout.max.ms", "300000")
+            // Reconnect with exponential backoff: a struggling broker needs breathing room,
+            // not a reconnect storm.
+            .set("reconnect.backoff.ms", "1000")
+            .set("reconnect.backoff.max.ms", "30000")
+            .set("retry.backoff.ms", "500")
             // Lower the broker-side wait time for fetch responses to improve responsiveness
             // when topics are idle (at the cost of more frequent fetch requests).
             .set("fetch.wait.max.ms", "500");

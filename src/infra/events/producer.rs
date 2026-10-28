@@ -27,7 +27,14 @@ mod kafka_impl {
                 .set("bootstrap.servers", bootstrap_servers)
                 .set("message.max.bytes", "10485760") // 10MB
                 .set("delivery.timeout.ms", "300000") // 5 minutes
-                .set("request.timeout.ms", "30000")
+                .set("request.timeout.ms", "120000")
+                // Slow/lossy link tolerance: give TCP+TLS setup a generous budget and back
+                // off exponentially so a struggling broker is not hammered with reconnects.
+                .set("socket.connection.setup.timeout.ms", "120000")
+                .set("socket.connection.setup.timeout.max.ms", "300000")
+                .set("reconnect.backoff.ms", "1000")
+                .set("reconnect.backoff.max.ms", "30000")
+                .set("retry.backoff.ms", "500")
                 .set("batch.size", "1048576") // 1MB batches
                 .set("linger.ms", "50") // wait 50ms for more messages to batch
                 .set("queue.buffering.max.messages", "100000")
