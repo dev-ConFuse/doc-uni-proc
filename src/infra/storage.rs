@@ -896,7 +896,8 @@ use anyhow::{anyhow, Context};
 use bb8_redis::{bb8::Pool, RedisConnectionManager};
 use redis::cmd;
 use serde_json::Value;
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 use tracing::{info, warn};
 
 /// FalkorDB storage backend for chunks and embeddings.
@@ -907,6 +908,13 @@ pub struct FalkordbStorage {
     pub graph_name: String,
     /// Whether a vector index was successfully created at startup.
     _has_vector_index: bool,
+    /// Dimension of the platform's embedding vectors; used to auto-create the
+    /// vector index on ingest (see `ensure_schema_once`).
+    embedding_dim: usize,
+    /// Graph names whose schema (structural + vector indexes) has already been
+    /// ensured by this process. Shared across `with_user_graph` clones so every
+    /// write path pays the DDL cost at most once per graph.
+    ensured_graphs: Arc<Mutex<HashSet<String>>>,
 }
 
 impl FalkordbStorage {
@@ -915,7 +923,15 @@ impl FalkordbStorage {
             pool,
             graph_name: graph_name.to_string(),
             _has_vector_index: has_vector_index,
+            embedding_dim: 0,
+            ensured_graphs: Arc::new(Mutex::new(HashSet::new())),
         }
+    }
+
+    /// Set the embedding dimension used for vector-index auto-creation.
+    pub fn with_embedding_dim(mut self, embedding_dim: usize) -> Self {
+        self.embedding_dim = embedding_dim;
+        self
     }
 
     pub fn get_pool(&self) -> Arc<Pool<RedisConnectionManager>> {
@@ -930,7 +946,50 @@ impl FalkordbStorage {
             pool: self.pool.clone(),
             graph_name,
             _has_vector_index: self._has_vector_index,
+            embedding_dim: self.embedding_dim,
+            ensured_graphs: self.ensured_graphs.clone(),
         }
+    }
+
+    /// Ensure the current graph has the structural + vector indexes it needs for
+    /// ingest and search. Idempotent (memoized per graph per process; FalkorDB
+    /// reports "already indexed" on repeats, which `execute_query` swallows).
+    ///
+    /// This is called from the ingest write paths so graphs that were never
+    /// initialized by auth-middleware's `createUserGraph` (cross-graph writes,
+    /// system graphs, lazily-created graphs) still end up with a usable vector
+    /// index — vectors written without one are invisible to `queryNodes`.
+    /// Failures are logged and retried on the next write; they never block ingest.
+    pub async fn ensure_schema_once(&self, dimension: usize) {
+        if self
+            .ensured_graphs
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(&self.graph_name)
+        {
+            return;
+        }
+        if dimension == 0 {
+            return;
+        }
+        if let Err(e) = self.create_vector_index("chunk_embeddings", dimension).await {
+            warn!(
+                "vector index auto-creation failed for graph '{}' (ingest continues): {:#}",
+                self.graph_name, e
+            );
+            return;
+        }
+        if let Err(e) = self.ensure_indexes().await {
+            warn!(
+                "structural index auto-creation failed for graph '{}' (ingest continues): {:#}",
+                self.graph_name, e
+            );
+            return;
+        }
+        self.ensured_graphs
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .insert(self.graph_name.clone());
     }
 
     pub async fn ensure_user_graph(&self) -> Result<()> {
@@ -1042,6 +1101,11 @@ impl FalkordbStorage {
         chunk_id: &str,
         embedding: &[f32],
     ) -> Result<()> {
+        // Auto-create the vector index on first write to this graph so embedded
+        // chunks are immediately searchable (see `ensure_schema_once`). For the
+        // embedding-less direct-store path the configured platform dim is used.
+        self.ensure_schema_once(if embedding.is_empty() { self.embedding_dim } else { embedding.len() })
+            .await;
         let embedding_str = format!("{:?}", embedding);
         let cypher = format!(
             r#"MATCH (c:Vector_Chunk {{id: "{chunk_id}"}})
@@ -1084,7 +1148,7 @@ impl FalkordbStorage {
         
         let embedding_str = format!("{:?}", embedding); // Standard [f32, f32, ...] format
         
-        // Build the embedding clause conditionally: skip setting `c.embedding` when
+        // Build the embedding clause conditionally: skip setting `c.embeddings` when
         // the vector is empty (Step 1.5 direct-store) so we don't write a zero-dim
         // value that conflicts with the vector index.  The embeddings callback will
         // populate the real vector later via MERGE.
@@ -1093,6 +1157,11 @@ impl FalkordbStorage {
         } else {
             format!(r#"c.embeddings  = vecf32({embedding_str}),"#)
         };
+        // Auto-create the vector index on first write to this graph (see
+        // ensure_schema_once) — including the embedding-less direct-store path,
+        // which is the common case for a fresh ingest.
+        self.ensure_schema_once(if embedding.is_empty() { self.embedding_dim } else { embedding.len() })
+            .await;
 
         // Let's use direct parameters through standard CYPHER dict if supported, otherwise explicit formatting
         let cypher = format!(
@@ -1714,7 +1783,11 @@ pub async fn create_falkordb_storage(
 
     // Per-user graphs (`graph-<user_id>`) are initialized lazily via
     // `ensure_user_graph()` when processing requests for each user.
-    let storage = Arc::new(FalkordbStorage::new(pool, graph_name, false));
+    // _embedding_dim was previously accepted and dropped; it now seeds the
+    // vector-index dimension used by ingest-time schema auto-creation.
+    let storage = Arc::new(
+        FalkordbStorage::new(pool, graph_name, false).with_embedding_dim(_embedding_dim),
+    );
     info!("FalkorDB pool ready (pool_size=32, timeout=30s, lazy connections — per-user graphs on demand)");
     Ok(storage)
 }
