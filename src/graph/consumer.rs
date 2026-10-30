@@ -40,10 +40,11 @@ impl EventConsumer {
             // (fixes BrokerTransportFailure after long idle periods)
             .set("socket.keepalive.enable", "true")
             .set("socket.timeout.ms", "120000")
-            // TCP+TLS setup budget. Explicit rather than relying on the library default,
-            // and allowed to grow on retry so a slow first handshake still succeeds.
+            // TCP+TLS setup budget. Explicit rather than relying on the library default.
+            // NOTE: librdkafka has no socket.connection.setup.timeout.max.ms (that is a
+            // Java-client knob) — setting it aborts client creation with
+            // "No such configuration property".
             .set("socket.connection.setup.timeout.ms", "120000")
-            .set("socket.connection.setup.timeout.max.ms", "300000")
             // Reconnect with exponential backoff: a struggling broker needs breathing room,
             // not a reconnect storm.
             .set("reconnect.backoff.ms", "1000")

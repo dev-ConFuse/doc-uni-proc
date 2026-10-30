@@ -30,8 +30,9 @@ mod kafka_impl {
                 .set("request.timeout.ms", "120000")
                 // Slow/lossy link tolerance: give TCP+TLS setup a generous budget and back
                 // off exponentially so a struggling broker is not hammered with reconnects.
+                // NOTE: librdkafka has no socket.connection.setup.timeout.max.ms (Java-only
+                // knob) — it aborts client creation as an unknown property.
                 .set("socket.connection.setup.timeout.ms", "120000")
-                .set("socket.connection.setup.timeout.max.ms", "300000")
                 .set("reconnect.backoff.ms", "1000")
                 .set("reconnect.backoff.max.ms", "30000")
                 .set("retry.backoff.ms", "500")
