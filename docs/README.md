@@ -79,5 +79,5 @@ pytest unified_processor -v
 |----------|----------|
 | [index.md](index.md) | Overview & docs index |
 | [api-reference.md](api-reference.md) | Full endpoint reference |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | SourceRelationshipRouter & graph design |
+| [architecture.md](architecture.md) | SourceRelationshipRouter & graph design |
 | [setup.md](setup.md) | Local development setup |

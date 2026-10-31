@@ -645,11 +645,11 @@ pub struct ChunkSnapshot {
 }
 
 pub struct GraphSync {
-    falkordb_storage: Arc<FalkordbStorage>,
+    falkordb_storage: Arc<FalkorDbStorage>,
 }
 
 impl GraphSync {
-    pub fn new(falkordb_storage: Arc<FalkordbStorage>) -> Self {
+    pub fn new(falkordb_storage: Arc<FalkorDbStorage>) -> Self {
         Self { falkordb_storage }
     }
 
@@ -902,7 +902,7 @@ use tracing::{info, warn};
 
 /// FalkorDB storage backend for chunks and embeddings.
 #[derive(Clone)]
-pub struct FalkordbStorage {
+pub struct FalkorDbStorage {
     pool: Arc<Pool<RedisConnectionManager>>,
     /// Logical graph name — used in log messages and query prefixes.
     pub graph_name: String,
@@ -917,7 +917,7 @@ pub struct FalkordbStorage {
     ensured_graphs: Arc<Mutex<HashSet<String>>>,
 }
 
-impl FalkordbStorage {
+impl FalkorDbStorage {
     pub fn new(pool: Arc<Pool<RedisConnectionManager>>, graph_name: &str, has_vector_index: bool) -> Self {
         Self {
             pool,
@@ -938,7 +938,7 @@ impl FalkordbStorage {
         self.pool.clone()
     }
 
-    /// Create a new FalkordbStorage instance targeting the per-user graph `graph-<user_id>`.
+    /// Create a new FalkorDbStorage instance targeting the per-user graph `graph-<user_id>`.
     /// This shares the underlying connection pool but routes all queries to the user's own graph.
     pub fn with_user_graph(&self, user_id: &str) -> Self {
         let graph_name = format!("graph-{}", user_id);
@@ -1703,7 +1703,7 @@ pub async fn create_falkordb_storage(
     password: &str,
     use_tls: bool,
     _embedding_dim: usize,
-) -> Result<Arc<FalkordbStorage>> {
+) -> Result<Arc<FalkorDbStorage>> {
     // Construct standard redis:// or rediss:// connection URL
     // We forcibly use `redis` (plaintext) because the FalkorDB cloud instance on port 50860
     // does not use TLS; a stale FALKORDB_USE_TLS=true would cause a TLS handshake timeout.
@@ -1786,7 +1786,7 @@ pub async fn create_falkordb_storage(
     // _embedding_dim was previously accepted and dropped; it now seeds the
     // vector-index dimension used by ingest-time schema auto-creation.
     let storage = Arc::new(
-        FalkordbStorage::new(pool, graph_name, false).with_embedding_dim(_embedding_dim),
+        FalkorDbStorage::new(pool, graph_name, false).with_embedding_dim(_embedding_dim),
     );
     info!("FalkorDB pool ready (pool_size=32, timeout=30s, lazy connections — per-user graphs on demand)");
     Ok(storage)

@@ -34,7 +34,7 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub pipeline: PipelineConfig,
     pub grpc: Option<GrpcConfig>,
-    pub falkordb: FalkordbConfig,
+    pub falkordb: FalkorDbConfig,
     pub kafka: KafkaConfig,
     pub web: WebConfig,
 }
@@ -83,7 +83,7 @@ pub struct PipelineConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FalkordbConfig {
+pub struct FalkorDbConfig {
     pub host: String,
     pub port: u16,
     pub username: String,
@@ -95,7 +95,7 @@ pub struct FalkordbConfig {
     pub timeout_secs: u64,
 }
 
-impl FalkordbConfig {
+impl FalkorDbConfig {
     pub fn from_env() -> Result<Self, String> {
         Ok(Self {
             host: req("FALKORDB_HOST")?,
@@ -201,7 +201,7 @@ impl Config {
 
         let database = DatabaseConfig::from_env()
             .map_err(crate::core::error::ProcessorError::ConfigError)?;
-        let falkordb = FalkordbConfig::from_env()
+        let falkordb = FalkorDbConfig::from_env()
             .map_err(crate::core::error::ProcessorError::ConfigError)?;
         let kafka = KafkaConfig::from_env()
             .map_err(crate::core::error::ProcessorError::ConfigError)?;

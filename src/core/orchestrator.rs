@@ -214,7 +214,7 @@ pub struct UnifiedProcessor {
     relationship_router: SourceRelationshipRouter,
 
 
-    pub falkordb_storage: Arc<crate::infra::storage::FalkordbStorage>,
+    pub falkordb_storage: Arc<crate::infra::storage::FalkorDbStorage>,
     /// In-memory cache: chunk_id â†’ content, populated before Kafka publish,
     /// consumed by the embedding consumer to avoid PostgreSQL dependency.
     pub chunk_content_cache: Arc<Mutex<HashMap<String, String>>>,
@@ -228,7 +228,7 @@ impl UnifiedProcessor {
 
     pub async fn new(
         config: Config,
-        falkordb_storage: Arc<crate::infra::storage::FalkordbStorage>,
+        falkordb_storage: Arc<crate::infra::storage::FalkorDbStorage>,
     ) -> Result<Self> {
         let document_parser = DocumentParser::new()?;
         
